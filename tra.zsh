@@ -1,4 +1,4 @@
-#!/usr/bin/zsh
+#!/usr/bin/env zsh
 # WTFPL
 setopt err_exit
 setopt pipe_fail
