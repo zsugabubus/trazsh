@@ -15,7 +15,7 @@ alias editor="command ${EDITOR:?\$EDITOR is not set.} +'set buftype=nofile'"
 vw() { eval $_vw }
 colorize() { eval $_colorize }
 local _colorize= _vw=pager
-local _tsel= tsel= tids= all_or_tsel= input=L lastinput= filter= file= autoupdate=
+local _tsel= tsel= tids= all_or_tsel= input=L lastinput= filter= file= autoupdate= fd=
 
 zshexit() { echoti cvvis }
 msg() { print -nP "%B%F{${1:-default}}$2%f%b" }
@@ -158,9 +158,9 @@ while :; do
     continue ;;
   =)
     if [[ $lastinput =~ ^[lL]$ ]]; then
-      exec 3< <(tr -t$tsel -l | colorize_list | head -n-1 | fzf --ansi --multi --query=$filter --print-query --header-lines=1 --bind alt-enter:select-all+accept) &&
-      read -u 3 filter &&
-      local _tids=($(print -o ${(@f)$(awk '{print $1}' <&3)}))
+      exec {fd}< <(tr -t$tsel -l | colorize_list | head -n-1 | fzf --ansi --multi --query=$filter --print-query --header-lines=1 --bind alt-enter:select-all+accept) &&
+      read -u $fd filter &&
+      local _tids=($(print -o ${(@f)$(awk '{print $1}' <&$fd)}))
       tsel=()
       for ((i=1; i <= $#_tids; ++i)); do
         local start=$_tids[i]
