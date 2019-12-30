@@ -10,7 +10,7 @@ zmodload zsh/terminfo
 
 alias tr="transmission-remote ${TR_HOST:-localhost}:${TR_PORT:-9091} ${TR_AUTH:+--authenv}"
 alias trr='tr >/dev/null'
-alias pager="colorize | sed -e 's/$/ '$'\e''[K/' -e '\$s/$/'$'\e''[J/' | command less -iEFKLQsrS"
+alias pager="colorize | sed --posix -e $'s/$/ \e[K/' -e $'\\\$s/$/\e[J/' | command less -iEFKLQsrS"
 alias editor="command ${EDITOR:?\$EDITOR is not set.} +'set buftype=nofile'"
 vw() { eval $_vw }
 colorize() { eval $_colorize }
@@ -34,38 +34,39 @@ confirm() {
 error() { msg red "An error occurred.\e[K"; sleep .2 }
 
 colorize_list() {
-  sed \
-      -e '1s/.*/\x1b[1m\0\x1b[0m/' \
-      -e '$s/.*/\x1b[1m\0\x1b[0m/' \
-      -e '2,$s/\bDone\b/\x1b[32m\0\x1b[0m/' \
-      -e '2,$s/\b0%\s\|\b0\.0\b\|\bNone\b/\x1b[0;37m\0\x1b[0m/g' \
-      -e '2,$s/\bStopped\b/\x1b[1;31m\0\x1b[0m/' \
-      -e '2,$s/\bIdle\b/\x1b[38;5;250m\0\x1b[0m/g' \
-      -e '2,$s/\bUnknown\b/\x1b[1;38;5;250m\0\x1b[0m/g'
+  sed --posix \
+      -e $'1s/.*/\e[1m\\0\e[0m/' \
+      -e $'$s/.*/\e[1m\\0\e[0m/' \
+      -e $'2,$s/ Done /\e[32m\\0\e[0m/' \
+      -e $'2,$s/ 0% /\e[0;37m\\0\e[0m/' \
+      -e $'2,$s/ 0\\.0/\e[0;37m\\0\e[0m/g' \
+      -e $'2,$s/ None /\e[0;37m\\0\e[0m/g' \
+      -e $'2,$s/ Stopped /\e[1;31m\\0\e[0m/' \
+      -e $'2,$s/ Idle /\e[38;5;250m\\0\e[0m/g' \
+      -e $'2,$s/ Unknown /\e[1;38;5;250m\\0\e[0m/g'
 }
 colorize_stat() {
-  sed \
-    -e 's/^\S.*/\x1b[1m\0\x1b[0m/' \
-    -e 's/\bNone\b/\x1b[38;5;250m\0\x1b[0m/'
+  sed --posix \
+    -e $'s/^[^ ].*/\e[1m\\0\e[0m/' \
+    -e $'s/ None /\e[38;5;250m\\0\e[0m/'
 }
 colorize_sessinfo() {
-  sed \
-    -e 's/^\S.*/\x1b[1m\0\x1b[0m/' \
-    -e 's/\bUnlimited\b/\x1b[1;32m\0\x1b[0m/' \
-    -e 's/\bYes\b/\x1b[32m\0\x1b[0m/;s/\bNo\b/\x1b[31m\0\x1b[0m/' \
-    -e 's/\s[0-9]\+\(.[0-9]\+\)\?/\x1b[1m\0\x1b[0m/'
+  sed --posix \
+    -e $'s/^[^ ].*/\e[1m\\0\e[0m/' \
+    -e $'s/ Unlimited /\e[1;32m\\0\e[0m/' \
+    -e $'s/ Yes$/\e[32m\\0\e[0m/;s/ No$/\e[31m\\0\e[0m/'
 }
 colorize_info() {
-  sed \
-    -e 's/\bNAME\b/\x1b[4m\0\x1b[24m/' \
-    -e 's/^\S.*/\x1b[1m\0\x1b[21m/' \
-    -e 's/\bUnlimited\b/\x1b[1;32m\0\x1b[0m/' \
-    -e 's/\bNone\b/\x1b[38;5;250m\0\x1b[0m/' \
+  sed --posix \
+    -e $'s/^NAME$/\e[4m\\0\e[24m/' \
+    -e $'s/^[^ ].*/\e[1m\\0\e[21m/' \
+    -e $'s/ Unlimited$/\e[1;32m\\0\e[0m/' \
+    -e $'s/ None$/\e[38;5;250m\\0\e[0m/' \
 }
 colorize_trackers() {
-  sed \
-    -e 's/Tracker [0-9]\+: .*/\x1b[1m\0\x1b[0m/' \
-    -e 's/: \(.*\)/: \x1b[32m\1\x1b[0m/'
+  sed --posix \
+    -e $'s/Tracker [0-9]\\{1,3\\}: .*/\e[1m\\0\e[0m/' \
+    -e $'s/: \\(.*\\)/: \e[32m\\1\e[0m/'
 }
 colorize_chunks() {
   awk '
@@ -78,15 +79,15 @@ BEGIN { print }
 }'
 }
 colorize_peers() {
-  sed \
-    -e 's/^\S.*/\x1b[1m\0\x1b[0m/'
+  sed --posix \
+    -e $'s/^[^ ].*/\e[1m\\0\e[0m/'
 }
 colorize_files() {
-  sed \
-    -e 's/^\S.*/\x1b[1m\0\x1b[0m/' \
-    -e 's/^\s\+#.*/\x1b[1m\0\x1b[0m/' \
-    -e 's/\bYes\b/\x1b[1;32m\0\x1b[0m/;s/\bNo\b/\x1b[31m\0\x1b[0m/' \
-    -e 's/\b0%/\x1b[37m\0\x1b[0m/'
+  sed --posix \
+    -e $'s/^[^ ].*/\e[1;4m\\0\e[0m/' \
+    -e $'s/^  #.*/\e[1m\\0\e[0m/' \
+    -e $'s/ Yes /\e[1;32m\\0\e[0m/;s/ No /\e[31m\\0\e[0m/' \
+    -e $'s/ 0% /\e[37m\\0\e[0m/'
 }
 
 tr_list() {
