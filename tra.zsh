@@ -17,7 +17,7 @@ colorize() { eval $_colorize }
 local _colorize= _vw=pager
 local _tsel= tsel= tids= all_or_tsel= input=L lastinput= filter= file= autoupdate= fd=
 
-zshexit() { echoti cvvis }
+trap 'echoti cvvis' INT EXIT
 msg() { print -nP "%B%F{${1:-default}}$2%f%b" }
 confirm() {
   echoti cup $(echoti lines) 0
