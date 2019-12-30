@@ -10,7 +10,7 @@ zmodload zsh/terminfo
 
 alias tr="transmission-remote ${TR_HOST:-localhost}:${TR_PORT:-9091} ${TR_AUTH:+--authenv}"
 alias trr='tr >/dev/null'
-alias pager="colorize | sed -e 's/$/ \\x1b[K/' -e '\$s/$/\\x1b[J/' | command ${PAGER:-less} -iEFKLQsrS"
+alias pager="colorize | sed -e 's/$/ '$'\e''[K/' -e '\$s/$/'$'\e''[J/' | command less -iEFKLQsrS"
 alias editor="command ${EDITOR:?\$EDITOR is not set.} +'set buftype=nofile'"
 vw() { eval $_vw }
 colorize() { eval $_colorize }
@@ -89,6 +89,26 @@ colorize_files() {
     -e 's/\b0%/\x1b[37m\0\x1b[0m/'
 }
 
+tr_list() {
+  local sort_args=$1
+  () {
+    () {
+      tids=(${(@f)$(awk '{print $1}' $1):1:-1})
+      _colorize=colorize_list
+      vw <$1
+    } =(
+      if [[ -n $sort_args ]]; then
+        # TODO: Clean this shit up. Or don't... it's working.
+        cat <(head -n1 <$1) \
+            <(tail -n+2 <$1 | head -n-1 | sort -sk$sort_args) \
+            <(tail -n1 <$1)
+      else
+        <$1
+      fi
+    )
+  } =(tr -t$all_or_tsel -l)
+}
+
 echoti clear
 while :; do
   echoti civis
@@ -122,20 +142,13 @@ while :; do
     input=$lastinput
     continue ;;
   q)
-    [[ $lastinput != l ]] && { input=l; continue }
+    [[ ! $lastinput =~ [lL] ]] && { input=l; continue }
     [[ $tsel != all ]] && { input=l; tsel=all; continue }
     exit ;;
   ZZ)
     exit ;;
   l|L)
-    () {
-      local list=$1
-      [[ $all_or_tsel != "all" ]] ||
-        tids=(${(@f)$(awk '{print $1}' $list):1:-1})
-      _colorize=colorize_list
-      vw <$list
-    } =(tr -t$all_or_tsel -l)
-    ;;
+    tr_list ;;
   A)
     _colorize=colorize_list
     tr -tactive -l | vw || error
@@ -149,11 +162,11 @@ while :; do
     input=$lastinput
     continue ;;
   j)
-    tsel=${tids[$(($tids[(I)$tsel]+${match[1]:-1}))]:-$tids[-1]}
+    tsel=${tids[$(($tids[(I)$_tsel]+${match[1]:-1}))]:-$tids[-1]}
     input=$lastinput
     continue ;;
   k)
-    tsel=${tids[$(($tids[(I)$tsel]-${match[1]:-1}))]:-$tids[1]}
+    tsel=${tids[$(($tids[(I)$_tsel]-${match[1]:-1}))]:-$tids[1]}
     input=$lastinput
     continue ;;
   =)
@@ -273,7 +286,23 @@ while :; do
     fi
     input=L
     continue ;;
-  o)
+  [oO]o) tr_list 2hr ;;
+  [oO]O) tr_list 2h  ;;
+  [oO]h) tr_list 3hr ;;
+  [oO]H) tr_list 3h  ;;
+  [oO]t) tr_list 5hr ;;
+  [oO]T) tr_list 5h  ;;
+  [oO]u) tr_list 6hr ;;
+  [oO]U) tr_list 6h  ;;
+  [oO]d) tr_list 7hr ;;
+  [oO]D) tr_list 7h  ;;
+  [oO]r) tr_list 8hr ;;
+  [oO]R) tr_list 8h  ;;
+  [oO]s) tr_list 9   ;;
+  [oO]S) tr_list 9r  ;;
+  [oO]n) tr_list 10  ;;
+  [oO]N) tr_list 10r ;;
+  b)
     for file in ${(@f)"$(tr -t$tsel -i | awk -F': ' '/^  Name: / {nam=substr($0,9)} /^  Location: / {dir=substr($0,13);print dir "/" nam}')"}; do
       zsh -ic "open ${(q)file}" || :
     done
