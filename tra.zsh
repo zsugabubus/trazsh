@@ -15,7 +15,7 @@ alias editor="command ${EDITOR:?\$EDITOR is not set.} +'set buftype=nofile'"
 vw() { eval $_vw }
 colorize() { eval $_colorize }
 local _colorize= _vw=pager
-local _tsel= tsel= tids= all_or_tsel= input=L lastinput= filter= file= autoupdate= fd=
+local tsel= tids= input=L lastinput= cmd= range= all_or_range= range_or_tsel= filter= file= autoupdate= fd=
 
 trap 'echoti cvvis' EXIT
 trap 'exit' INT TERM
@@ -96,7 +96,8 @@ tr_list() {
   local sort_args=$1
   () {
     () {
-      tids=(${(@f)$(awk '{print $1}' $1):1:-1})
+      [[ $input == v ]] ||
+        tids=(${(@f)$(awk '{print $1}' $1):1:-1})
       _colorize=colorize_list
       vw <$1
     } =(
@@ -109,132 +110,138 @@ tr_list() {
         <$1
       fi
     )
-  } =(tr -t$all_or_tsel -l)
+  } =(tr -t$all_or_range -l)
+  cmd=v
 }
 
+echoti civis
 echoti clear
 while :; do
-  echoti civis
   echoti home
-  unset match
-  _tsel=$tsel
-  if [[ $input =~ ^([[:digit:],-]+|a)?([^[:digit:],-]+)$ ]]; then
-    if [[ $match[1] == 'a' ]]; then
-      tsel=all
+  [[ $input =~ ^([[:digit:],-]+|a)?([^[:digit:],-]+)?$ ]]
+  if [[ $match[1] == 'a' ]]; then
+    range=all
+  else
+    if [[ $match[1] =~ ^[^[:digit:]].*$ ]]; then
+      range=$tsel$match[1]
     else
-      if [[ $match[1] =~ ^[[:digit:]] ]]; then
-        tsel=
-      fi
-      tsel=${${:-$tsel$match[1]}:-all}
+      range=$match[1]
     fi
   fi
-  input=${match[2]:-$input}
-  if [[ $input =~ ^[A-Z] ]]; then
-    all_or_tsel=all
+  cmd=$match[2]
+  range_or_tsel=${${range:-$tsel}:-all}
+  if [[ $cmd =~ ^[A-Z] ]]; then
+    all_or_range=all
   else
-    all_or_tsel=$tsel
+    all_or_range=$range_or_tsel
   fi
 
   local ok=1
   _colorize=cat
-  case $input in
-  ' ')
-    # Noop.
+  case $cmd in
+  '') unset ok ;;
+  ' ') # Noop.
+    tsel=$range_or_tsel
     ;;
-  \.)
+  \.) # Repeat.
     input=$lastinput
     continue ;;
-  q)
-    [[ ! $lastinput =~ [lL] ]] && { input=l; continue }
-    [[ $tsel != all ]] && { input=l; tsel=all; continue }
+  q) # Close.
+    [[ ! $lastinput =~ ^[vlL]$ ]] && { input=v; continue }
+    [[ $tsel != all ]] && { input=v; tsel=all; continue }
     exit ;;
-  ZZ)
+  Z) unset ok ;;
+  ZZ) # Exit.
     exit ;;
-  l|L)
-    tr_list ;;
-  A)
+  l|L) # List.
+    tsel=$range_or_tsel
+    tr_list
+    ;;
+  A) # Active
     _colorize=colorize_list
     tr -tactive -l | vw || error
     ;;
-  G)
-    tsel=${match[1]:-$tids[-1]}
+  v) # View. (Non-destructive list.)
+    tsel=$range_or_tsel
+    tr_list ;;
+  G) # Go last.
+    tsel=${range:-$tids[-1]}
     input=$lastinput
     continue ;;
-  gg)
-    tsel=${match[1]:-$tids[1]}
+  g) unset ok ;;
+  gg) # Go first.
+    tsel=${range:-$tids[1]}
     input=$lastinput
     continue ;;
-  j)
-    tsel=${tids[$(($tids[(I)$_tsel]+${match[1]:-1}))]:-$tids[-1]}
+  j) # Down.
+    tsel=${tids[$(($tids[(I)$tsel]+${range:-1}))]:-$tids[-1]}
     input=$lastinput
     continue ;;
-  k)
-    tsel=${tids[$(($tids[(I)$_tsel]-${match[1]:-1}))]:-$tids[1]}
+  k) # Up.
+    tsel=${tids[$(($tids[(I)$tsel]-${range:-1}))]:-$tids[1]}
     input=$lastinput
     continue ;;
-  =)
-    if [[ $lastinput =~ ^[lL]$ ]]; then
-      exec {fd}< <(tr -t$tsel -l | colorize_list | head -n-1 | fzf --ansi --multi --query=$filter --print-query --header-lines=1 --bind alt-enter:select-all+accept) &&
-      read -u $fd filter &&
-      local _tids=($(print -o ${(@f)$(awk '{print $1}' <&$fd)}))
-      tsel=()
-      for ((i=1; i <= $#_tids; ++i)); do
-        local start=$_tids[i]
-        local end=$start
-        for ((;end + 1 == ${_tids[i + 1]:--1}; ++end, ++i)); do :; done
-        if [[ $start < $end ]]; then
-          tsel+=($start-$end)
-        else
-          tsel+=($start)
-        fi
-      done
-      unset _tids
-
-      tsel=${(j:,:)tsel}
-      input=l
-      continue
-    fi
-    ;;
-  s|S)
-    if [[ $lastinput =~ ^[il]$ ]]; then
-      trr -t$all_or_tsel --start || error
-      input=$lastinput
-      continue
-    fi
-    ;;
-  p|P)
-    if [[ $lastinput =~ ^[il]$ ]]; then
-      trr -t$all_or_tsel --stop || error
-      input=$lastinput
-      continue
-    fi
-    ;;
-  V)
-    if [[ $lastinput =~ ^[il]$ ]]; then
-      if confirm "Verify torrent(s) $tsel?" 2; then
-        trr -t$tsel --verify || error
+  =) # Filter.
+    exec {fd}< <(tr -t$tsel -l | colorize_list | head -n-1 | fzf --ansi --multi --query=$filter --print-query --header-lines=1 --bind alt-enter:select-all+accept) &&
+    read -u $fd filter &&
+    local _tids=($(print -o ${(@f)$(awk '{print $1}' <&$fd)}))
+    tsel=()
+    for ((i=1; i <= $#_tids; ++i)); do
+      local start=$_tids[i]
+      local end=$start
+      for ((;end + 1 == ${_tids[i + 1]:--1}; ++end, ++i)); do :; done
+      if [[ $start < $end ]]; then
+        tsel+=($start-$end)
+      else
+        tsel+=($start)
       fi
-      input=$lastinput
-      continue
-    fi
+    done
+    unset _tids
+
+    tsel=${(j:,:)tsel}
+    input=l
+    continue
     ;;
-  i)
+  s|S) # Start/Start all.
+    trr -t$all_or_range --start || error
+    input=$lastinput
+    continue
+    ;;
+  p|P) # Pause/Pause all.
+    trr -t$all_or_range --stop || error
+    input=$lastinput
+    continue
+    ;;
+  V) # Verify.
+    tsel=$range_or_tsel
+    if confirm "Verify torrent(s) $tsel?" 2; then
+      trr -t$tsel --verify || error
+    fi
+    input=$lastinput
+    continue
+    ;;
+  i) # Info.
     _colorize=colorize_info
+    tsel=$range_or_tsel
     tr -t$tsel -i | vw || error
     ;;
-  r)
+  r) # Peers.
     _colorize=colorize_peers
+    tsel=$range_or_tsel
     tr -t$tsel -ip | vw || error
     ;;
-  c)
+  c) # Chunks.
     _colorize=colorize_chunks
+    tsel=$range_or_tsel
     tr -t$tsel -ic | vw || error
     ;;
-  f)
+  f) # Files.
     _colorize=colorize_files
+    tsel=$range_or_tsel
     tr -t$tsel -if | vw || error
     ;;
-  F)
+  F) # Filter files.
+    tsel=$range_or_tsel
     if [[ $tsel =~ ^[[:digit:]]$ ]]; then
       () {
         () {
@@ -242,7 +249,7 @@ while :; do
           if $EDITOR +'setf transmission-files' -- $yes_file \
             && [[ $yes_file -nt $orig_file ]]; then
             local no_files=${(j:,:)${(@f)$(
-              comm -23 --nocheck-order <(awk '$4=="Yes"' $orig_file) $yes_file | cut -d: -f1)}}
+              comm -23 <(awk '$4=="Yes"' $orig_file | sort) <(sort $yes_file) | cut -d: -f1)}}
             [[ -z $no_files ]] || tr -t$tsel --no-get $no_files || error
 
             local yes_files=${(j:,:)${(@f)$(awk '$4=="No"' $yes_file | cut -d: -f1)}}
@@ -254,33 +261,38 @@ while :; do
       continue
     fi
     ;;
-  t)
+  t) # Trackers.
     _colorize=colorize_trackers
+    tsel=$range_or_tsel
     tr -t$tsel -it | vw || error
     ;;
-  I)
+  I) # Session info.
     _colorize=colorize_sessinfo
     tr -si | vw || error
     ;;
-  T)
+  T) # Session stat.
     _colorize=colorize_stat
     tr -st | vw || error
     ;;
-  dd)
+  d|D) unset ok ;;
+  dd) # Remove.
     [[ $lastinput != i ]] && { input=i; continue }
+    tsel=$range_or_tsel
     if confirm "Remove torrent(s) $tsel"; then
       trr -t$tsel --remove || error
     fi
-    input=l
+    input=L
     continue ;;
-  DD)
+  DD) # Delete.
     [[ $lastinput != i ]] && { input=i; continue }
+    tsel=$range_or_tsel
     if confirm "Remove **AND DELETE** torrent(s) $tsel" 2; then
       trr -t$tsel --remove-and-delete || error
     fi
-    input=l
+    input=L
     continue ;;
-  QQ)
+  Q) unset ok ;;
+  QQ) # Quit daemon.
     if confirm "Exit Transmission"; then
       trr -tall --stop &&
       trr -tall --reannounce &&
@@ -289,6 +301,8 @@ while :; do
     fi
     input=L
     continue ;;
+  o|O) # Order by...
+    unset ok ;;
   [oO]o) tr_list 2hr ;;
   [oO]O) tr_list 2h  ;;
   [oO]h) tr_list 3hr ;;
@@ -305,35 +319,36 @@ while :; do
   [oO]S) tr_list 9r  ;;
   [oO]n) tr_list 10  ;;
   [oO]N) tr_list 10r ;;
-  b)
+  b) # Browse.
+    tsel=$range_or_tsel
     for file in ${(@f)"$(tr -t$tsel -i | awk -F': ' '/^  Name: / {nam=substr($0,9)} /^  Location: / {dir=substr($0,13);print dir "/" nam}')"}; do
       zsh -ic "open ${(q)file}" || :
     done
     input=$lastinput
     continue ;;
-  e)
+  e) # View in $EDITOR.
     _vw=editor
     input=$lastinput
     continue ;;
-  U)
-    if [[ -z $autoupdate || -n $match[1] ]]; then
-      autoupdate=${match[1]:-3}
+  U) # Autoupdate.
+    if [[ -z $autoupdate || -n $range ]]; then
+      autoupdate=${range:-3}
     else
       autoupdate=
     fi
-    tsel=$_tsel
     echoti cup $(echoti lines) 0
     msg '' "Autoupdate: ${${autoupdate:+${autoupdate}s}:-no}."
-    sleep .6
+    sleep .5
     input=$lastinput
     continue ;;
   *)
+    input=
     unset ok
     ;;
   esac
 
   if [[ -v ok ]]; then
-    lastinput=$input
+    lastinput=$cmd
     input=
     if [[ -z $input && $_vw != pager ]]; then
       _vw=pager
@@ -342,19 +357,19 @@ while :; do
     fi
   fi
 
-  echoti cup $(echoti lines) 0
-  echoti cvvis
-  echoti el
   local args=(-t $autoupdate)
   [[ -n $autoupdate && -z $input ]] || args=()
-  read -srk1 $args "char?:<$tsel>$input" || { input=.; continue }
-  case $char in
-  $'\177')
-    [[ -n $input ]] && input=${input:0:-1} ;;
-  [[:blank:]])
-    input= ;;
-  [[:print:]])
-    input+=$char ;;
-  esac
+  echoti cup $(echoti lines) 0
+  print -n $tsel
+  [[ $tsel =~ ^[[:digit:]]+$ ]] && (($#tids > 1)) &&
+    print -n " ($((100 * (tids[(I)$tsel] - 1) / ($#tids - 1)))%)"
+  echoti el
+  echoti cup $(echoti lines) $(($(echoti cols) - 11))
+  print -n $input
+  read -srk1 $args char || { input=.; continue }
+  if [[ char =~ [[:print:]] ]]; then
+    print -n $char
+    input+=$char
+  fi
 done
 # vi:ts=2 sw=2
